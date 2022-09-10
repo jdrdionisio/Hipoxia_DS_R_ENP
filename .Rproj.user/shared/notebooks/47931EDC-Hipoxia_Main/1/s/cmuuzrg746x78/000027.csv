@@ -1,0 +1,4 @@
+"0","# Lets visualize our model "
+"0","model2_augment <- augment(model2)"
+"2","Warning: cannot xtfrm data frames"
+"0","model2_augment"

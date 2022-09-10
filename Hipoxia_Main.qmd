@@ -1,0 +1,623 @@
+---
+title: "Relatório sobre as dataset Hipóxias"
+author: "João Dionísio"
+date: long
+format:
+  html:
+    smooth-scroll: true
+    self-contained: true
+    toc: true
+    toc-location: right
+theme: cosmo
+smooth-scroll: true
+execute:
+  warning: false
+  echo: true
+project:
+  output-dir: outputs/documents/html
+---
+
+# Relatório sobre as dataset Hipóxias
+
+Este relatório foi criado no dia `r format(Sys.time(), '%d %B %Y')`. Foi utilizado a base de dados chamado de hypoxia que se encontra referida na sua forma base com o nome hipoxia.xlsx.
+
+Neste relatório inicial irei explorar de forma simples este dataset. Inicialmente
+
+```{r}
+# Exercicio 
+# 1. Criar um projecto com o nome hipoxia
+# 2. Criar um relatorio em html ou docx conforme a preferencia 
+# 3. Devem explorar o dataset hypoxia.xlsx  
+# 4. Nesse dataset devem explorar diferencas entre os doentes por tipo de cirurgia Type Surg 
+# 5. Devem explorar nao so caracteristicas como outcomes
+# 6. em de apresentar representacoes graficas (3 graficos diferentes) e tabelas (2 tabelas) T
+# 7. Devem utilizar um modelo de regressao para avaliar se ha diferencas entre o valor de BMI por tipo de cirurgia ajustado pra sexo e idade  
+# 8. O documento docx ou html deve conter pelo menos, titulos, equacoes, listas e imagem p.e. um doente tipo com CPAP
+
+```
+
+## Instalar e Carregar Bibliotecas
+
+```{r}
+# SOURCE: https://cedricscherer.netlify.app/2019/05/17/the-evolution-of-a-ggplot-ep.-1/#aim 
+
+# Packages
+required_packages <- c(
+                       "tidyverse",   
+                       "broom",
+                       #"ggplot2",
+                       "readxl",
+                       #"lubridate",
+                       "kableExtra",
+                       "patchwork",
+                       "MLDataR",
+                       "here",
+                       "ggthemes"
+                       #"tidyverse"
+                       )      
+#ploty 
+for (pkg in required_packages) {
+  # install packages if not already present
+  if (!pkg %in% rownames(installed.packages())) {
+    install.packages(pkg)
+  }
+  
+  # load packages to this current session 
+  library(pkg, character.only = TRUE)
+}
+```
+
+Para uma questão de coerência e para não me esquecer no futuro deixo a seed definida para possíveis análises e a limpeza do environment.
+
+```{r}
+set.seed(123)
+
+#### Clean enviorment
+
+
+rm(list = ls(all.names = TRUE)) #will clear all objects includes hidden objects.
+```
+
+## Explorar o dataset hypoxia.xlsx
+
+```{r}
+hypoxia <- read_excel("datasets/hypoxia.xlsx")
+View(hypoxia)
+```
+
+Limpeza das variáveis
+
+```{r}
+#install.packages("janitor")
+library(janitor)
+hypoxia_1 <- janitor::clean_names(hypoxia)
+```
+
+```{r}
+hipoxia_lite <- hypoxia_1 %>%
+  select(age,
+         female,
+         race,
+         bmi,
+         sleeptime,
+         min_sao2,
+         diabetes,
+         smoking,
+         hyper,
+         cad,
+         cpap,
+         type_surg)
+
+
+#Penso que sera possivel simplificar este cofigo
+#
+
+#mulheres
+unit_female <- hipoxia_lite %>%
+  summarise(female_mean= round(mean(female),2))
+  
+
+a <- unit_female*100
+#fumadores
+unit_smokers <- hipoxia_lite %>%
+  summarise(smokers_mean= round(mean(smoking),2))
+
+b <- unit_smokers*100
+
+#hipertensos
+unit_hta <- hipoxia_lite %>%
+  summarise(hyper_mean= round(mean(hyper),2))
+
+c <- unit_hta*100
+
+#CAD
+unit_diabetes <- hipoxia_lite %>%
+  summarise(db_mean= round(mean(diabetes),2))
+
+d <- unit_diabetes*100
+
+#CPAP
+unit_cpap <- hipoxia_lite %>%
+  summarise(cpap_mean = round(mean(cpap),2))
+
+e <- unit_cpap*100
+  #footnote(general = "Here is a general comments of the table. ",
+# Poderiamos ter 
+
+#library(table1)
+
+#t1<- table1(~ factor(sex) + 
+ #        age + 
+  #       factor(resting_ecg) + 
+   #      cholesterol +
+    #     resting_bp | 
+     #    heart_disease, 
+      # data=hd,
+      # footnote = "Source: MLData R",
+       #caption = "Descriptive variables by health disease"
+      # )
+
+#library(openxlsx)
+#t1
+#table1 <- as.data.frame(t1)
+#write.xlsx(table1, file = here::here("outputs", 
+ #                 paste0("table1_", Sys.Date(),".xlsx")) 
+  #         )
+```
+
+### Dados descritivos de variáveis binárias - em percentagem
+
+A percetagem de mulheres no dataset é `r a`%
+
+A percetagem de fumadores no dataset é `r b`%
+
+A percetagem de diabeticos no dataset é `r d`%
+
+A percetagem de hipertensos no dataset é `r c`%
+
+A percentagem de utilizadores de CPAP `r e`%
+
+Exemplo de tabela discritiva
+
+```{r}
+race_df <- hipoxia_lite %>%
+  group_by(race) %>%
+  summarise(cases_race=n())%>%
+  mutate(race = case_when(
+    race == 1 ~ "African American",
+    race == 2 ~ "Caucasian",
+    race == 3 ~ "Other"
+  ))%>%
+  rename("Race" = race)%>%
+  rename("N()"= cases_race)
+
+table_race <- race_df %>%
+  kbl(digits = 2 # casas decimais
+      ,caption = "Número de individuos, por raça") %>%
+  kable_classic(full_width = F, #mantem numa linha
+                html_font = "Calibri")
+
+table_race
+```
+
+## Explorar diferencas entre os doentes por tipo de cirurgia Type Surg
+
+```{r}
+type_surg_df <- hipoxia_lite %>%
+  mutate(type_surg = case_when(
+    type_surg == 1 ~ "Gastroenterostomy",
+    type_surg == 2 ~ "Gastric restrictive procedure",
+    type_surg == 3 ~ "Gastroplasty",
+    type_surg == 4 ~ "Removal of gastric restrictive device",
+  ))%>%
+  group_by(type_surg)
+
+total_cirurgias <- type_surg_df %>%
+  summarise("N" = n())%>%
+  summarise(N= sum(N))
+
+total_cirurgias_N <- pull(total_cirurgias,1)
+  
+type_surg_df_N <- type_surg_df %>%
+  summarise(N = n())%>%
+  arrange(desc(N))%>%
+  mutate(
+   Percentagem = N / total_cirurgias_N *100)
+  
+#quero adicionar a percetagem de cada cirurgia no total
+
+table_surg_N <- type_surg_df_N %>%
+  kbl(digits = 2 # casas decimais
+      ,caption = "Número de cirurgias por tipo de procedimento") %>%
+  kable_classic(full_width = F, #mantem numa linha
+                html_font = "Calibri")
+
+type_surg_df_fem <- type_surg_df  %>%
+  summarise(percent_sex=mean(female, na.rm = TRUE)*100)%>%
+  arrange(percent_sex)
+
+table_surg_female <- type_surg_df_fem %>%
+  kbl(digits = 2 # casas decimais
+      ,caption = "Percentagem de mulheres por tipo de cirurgia") %>%
+  kable_classic(full_width = F, #mantem numa linha
+                html_font = "Calibri")
+
+type_surg_df_bmi <- type_surg_df  %>%
+  summarise(mean_bmi=mean(bmi, na.rm = TRUE),
+            sd_bmi=sd(bmi, na.rm = TRUE),
+            min_bmi=min(bmi, na.rm = TRUE),
+            max_bmi=max(bmi, na.rm = TRUE)
+            )%>%
+  rename("Média de BMI"= mean_bmi,
+         "DP do BMI"= sd_bmi,
+         "Min"=min_bmi,
+         "Max"=max_bmi
+         "Tipo de cirurgia"= type_surg)
+
+table_surg_bmi <- type_surg_df_bmi %>%
+  kbl(digits = 3 # casas decimais
+      ,caption = "Índice de Massa Corporal por cirurgia,(média, desvio-padrão, minimo e máximo)") %>%
+  kable_classic(full_width = F, #mantem numa linha
+                html_font = "Calibri")
+
+type_surg_df_age <- type_surg_df  %>%
+  summarise(mean_age=mean(age, na.rm = TRUE),
+            sd_age=sd(age, na.rm = TRUE),
+            min_age=min(age, na.rm = TRUE),
+            max_age=max(age, na.rm = TRUE)
+            )%>%
+  rename("Média de Idade"= mean_age,
+         "DP da Idade"= sd_age,
+         "Min"=min_age,
+         "Max"=max_age)
+
+table_surg_age <- type_surg_df_age %>%
+  kbl(digits = 3 # casas decimais
+      ,caption = "Idade por cirurgia,(média, desvio-padrão, minimo e máximo)") %>%
+  kable_classic(full_width = F, #mantem numa linha
+                html_font = "Calibri")
+
+# colocar tabela em baixo
+sum_race <- hipoxia_lite %>%
+    group_by(type_surg,race) %>%
+    summarise(n_race=dplyr::n()
+    )
+
+sum_race <- sum_race %>%
+  mutate(
+    race = case_when(
+      race ==1 ~ "N_African_American",
+      race ==2 ~ "N_Caucasian",
+      race ==3 ~ "N_Other_race"
+      )
+  )
+
+sum_race <- sum_race %>%
+pivot_wider(names_from = race, values_from = n_race)
+
+sum_race <- sum_race %>%
+  mutate(
+    N_African_American = ifelse(is.na(N_African_American), 0, N_African_American),
+    N_Caucasian = ifelse(is.na(N_Caucasian), 0, N_Caucasian),
+    N_Other_Race = ifelse(is.na(N_other_race), 0, N_other_race)
+  )%>%
+  mutate(type_surg = case_when(
+    type_surg == 1 ~ "Gastroenterostomy",
+    type_surg == 2 ~ "Gastric restrictive procedure",
+    type_surg == 3 ~ "Gastroplasty",
+    type_surg == 4 ~ "Removal of gastric restrictive device",
+  ))
+
+table_surg_race <- sum_race %>%
+  kbl(digits = 2 # casas decimais
+      ,caption = "Distribuição de utentes por raça e por tipo de cirurgia") %>%
+  kable_classic(full_width = F, #mantem numa linha
+                html_font = "Calibri")
+#sum_hypoxia <- left_join(sum_hypoxia, sum_race, by="type_surg")
+
+```
+
+###Número de Cirurgias, por N e por percentagem do total
+
+```{r}
+table_surg_N
+
+nome_cirur_ref <- first(type_surg_df_N$type_surg)
+numero_cirur_ref <- first(type_surg_df_N$N)
+percent_cirur_ref <- first(type_surg_df_N$Percentagem,1)
+
+```
+
+O número de cirurgias total foi `r total_cirurgias_N` com a intervenção de referência a ser a `r nome_cirur_ref` com `r numero_cirur_ref` compondo `r percent_cirur_ref` do total de cirurgias.
+
+###Percentagem de utentes femininos por tipo de cirurgia
+
+```{r}
+# colocar aqui as tabelas dos primeiras
+table_surg_female
+```
+
+###Distribuição de utentes por raça e por tipo de cirurgia
+
+table_surg_bmi
+
+```{r}
+# colocar aqui as tabelas dos primeiras
+table_surg_race
+
+```
+
+###Média e desvio-padrão do Índice de Massa corporal, por tipo de cirurgia
+
+```{r}
+table_surg_bmi 
+
+```
+
+```{r}
+#Nao aplicar já fazer se for para pôr valores em inline
+#list_types <- c("Gastroenterostomy","Gastric restrictive procedure","Gastroplasty","Removal of gastric restrictive device")
+
+#var_names <- paste0("r", 1:4)
+
+#for (i in seq_along(var_names)){
+ # assign(var_names[[i]], sum_hypoxia %>% filter(type_surg==list_types[[i]]) %>% pull(n_surgeries))
+#}
+```
+
+## Representações Gráficas
+
+```{r}
+
+p1<- ggplot(hipoxia_lite, 
+       aes(x=sleeptime, 
+           y=bmi, 
+           colour=as.factor(type_surg))
+       )+ 
+  
+  geom_point(alpha=0.5
+             ) +
+
+  
+  scale_colour_discrete(labels=c("Gastroenterostomy","Gastric restrictive procedure","Gastroplasty","Removal of gastric restrictive device")) +
+  
+    labs(title = "Sleep time and BMI",
+         subtitle = "By type of surgery",
+         y = "BMI",
+         x = "Sleptime", 
+         caption = "Source: Course R",
+       colour="") +
+   theme_minimal() +
+  theme(legend.position="bottom")
+
+p1
+
+```
+
+##Boxplot com o tempo de cirurgia por tipo de cirurgia
+
+```{r}
+p2<- ggplot() +
+  geom_boxplot(data= hypoxia_1, 
+            aes(x = as.factor(type_surg), y = duration_of_surg ),
+            outlier.shape = NA)+ #NEW to Exclude outliers +
+  scale_x_discrete(labels=c("Gastroenterostomy","Gastric restrictive procedure","Gastroplasty","Removal of gastric restrictive device")) +
+  labs(title = "Duration of Surgery",
+         subtitle = "By type of surgery",
+         y = "Duration of Surgery",
+         x = "Type of Surgery", 
+         caption = "Source: Course R",
+       colour="") +
+  theme_minimal() +
+  theme(legend.position="bottom")
+
+p2
+```
+
+Uma questão que poderá surgir é se o BMI poderá influenciar o tempo de cirurgia
+
+```{r}
+hipoxia_2 <- hypoxia_1 %>%
+  mutate(BMI_cat = case_when(
+     bmi = (bmi<18.5) ~ "Underweight",
+     bmi = (bmi>=18.5 & bmi<24.5) ~ "Normal",
+     bmi = (bmi>=24.5 & bmi<29.9) ~ "Overweight",
+     bmi = (bmi>=30) ~ "Obese"
+  ) 
+  )
+
+#list_bmi <- c("Underweight","Normal","Overweight","Obese")
+
+#var_names <- paste0("p",3:6)
+
+# for (i in seq_along(var_names)){
+# assign(var_names[[i]], ggplot() +
+# geom_boxplot(data= hypoxia_1,
+#            aes(x = as.factor(type_surg), y = duration_of_surg ),
+#            outlier.shape = NA)+ #NEW to Exclude outliers +
+# scale_x_discrete(labels=c("Gastroenterostomy","Gastric restrictive procedure","Gastroplasty","Removal of gastric restrictive device")) +
+# labs(title = "Duration of Surgery",
+#       subtitle = paste0("By type of surgery",",",list_bmi[[i]]),
+#      y = "Duration of Surgery",
+#     x = "Type of Surgery",
+#    caption = "Source: Course R",
+# colour="") +
+# theme_minimal() +
+# theme(legend.position="bottom"))
+# }
+
+p3<- ggplot() +
+  geom_boxplot(data= hipoxia_2 %>% filter(BMI_cat == "Underweight" | BMI_cat == "Normal"), 
+            aes(x = as.factor(type_surg), 
+                y = duration_of_surg ),
+                outlier.shape = NA)+ 
+  facet_wrap(~BMI_cat) +#NEW to Exclude outliers +
+  scale_x_discrete(labels=c("Gastroenterostomy","Gastric restrictive procedure","Gastroplasty","Removal of gastric restrictive device")) +
+  labs(title = "Duration of Surgery",
+        subtitle = "By type of surgery",
+        y = "Duration of Surgery",
+        x = "Type of Surgery", 
+        caption = "Source: Course R",
+        colour="") +
+  theme_minimal() +
+  theme(legend.position="bottom")
+
+
+p4 <-ggplot() +
+  geom_boxplot(data= hipoxia_2 %>% filter(BMI_cat == "Overweight" | BMI_cat == "Obese"), 
+            aes(x = as.factor(type_surg), 
+                y = duration_of_surg ),
+                outlier.shape = NA)+ 
+  facet_wrap(~BMI_cat) +#NEW to Exclude outliers +
+  scale_x_discrete(labels=c("Gastroenterostomy","Gastric restrictive procedure","Gastroplasty","Removal of gastric restrictive device")) +
+  labs(title = "Duration of Surgery",
+        subtitle = "By type of surgery",
+        y = "Duration of Surgery",
+        x = "Type of Surgery", 
+        caption = "Source: Course R",
+        colour="") +
+  theme_minimal() +
+  theme(legend.position="bottom")
+
+
+p5<-p3/p4
+
+```
+
+Não se questionem mais porque todos os utentes sao obesos com apenas um Normal
+
+## Modelo de regressao para avaliar se ha diferencas entre o valor de BMI por tipo de cirurgia ajustado pra sexo e idade
+
+```{r}
+
+hipoxia_lite$type_surg <- as.factor(hipoxia_lite$type_surg)# forcar o R a definir tipo de instituicao como variavel categorica
+
+hipoxia_lite$type_surg <- relevel(hipoxia_lite$type_surg, ref = 1)
+
+#hipoxia_lite_mdf <- hipoxia_lite %>%
+ # filter()
+
+model2 <- lm(bmi ~ 
+               as.factor(type_surg)+ # variaveis explicativas
+               as.factor(female)+
+               age, 
+             data= hipoxia_lite)
+
+# We can with the Broom package make the model object in a tidy model 
+model2_tidy <- tidy(model2, conf.int = TRUE,exponentiate = TRUE)
+model2_tidy_sig <- tidy(model2, conf.int = TRUE,exponentiate = FALSE) 
+
+model2_tidy <- model2_tidy %>%
+    mutate(
+    term = case_when(
+      term =="(Intercept)" ~ "Gastroenterostomy(Referência)",
+      term =="as.factor(type_surg)2" ~ "Gastric restrictive procedure",
+      term =="as.factor(type_surg)3" ~ "Gastroplasty",
+      term =="as.factor(type_surg)4" ~ "Removal of gastric restrictive device",
+      term =="as.factor(female)1" ~ "Female",
+    ))%>%
+    filter(!is.na(term))
+
+model2_tidy
+# model2_tidy_sig <- model2_tidy_sig %>%
+#     mutate(
+#     term = case_when(
+#       term =="(Intercept)" ~ "Gastroenterostomy(Referência)",
+#       term =="as.factor(type_surg)2" ~ "Gastric restrictive procedure",
+#       term =="as.factor(type_surg)3" ~ "Gastroplasty",
+#       term =="as.factor(type_surg)4" ~ "Removal of gastric restrictive device",
+#       term =="as.factor(female)1" ~ "Female",
+#     ))%>%
+#     filter(!is.na(term))
+# Inspect the model
+
+# The glance function provides the most model diagnostics indicators
+model2_glance <-glance(model2)
+# Para verificação de resultados
+```
+
+```{r}
+# filtrar as colunas significativas e coloca-las em vector para coloca-las como inline no texto
+#model2_tidy_sig1 <- model2_tidy_sig %>%
+  #filter(p.value<0,05)%>%
+  #pull(term)
+  
+#model2_tidy_sig1
+```
+
+Verifica-se que apenas a Gastric restrictive procedure tem uma diferença signitivamente significativa para o BMI em relação à cirurgia de referência (Gastroenterostomy).
+
+```{r}
+# Lets visualize our model 
+model2_augment <- augment(model2)
+
+model2_augment
+
+p1<- ggplot(data=model2_tidy, 
+            aes(x=reorder(term, estimate), y=estimate)) +
+  
+         geom_errorbar(aes(ymin=conf.low, 
+                           ymax=conf.high), 
+                       width = 0.2,size  = 1,
+                       position = "dodge", color="gray") +
+  geom_hline(yintercept = 0, color = "red", size = 1) +
+  geom_point() + 
+    labs(title = "Diferença do BMI por tipo de cirugia tendo em conta idade e sexo",
+       x = "", 
+       y = "Diference do BMI") +  
+  coord_flip()
+
+p1
+
+
+  
+```
+
+De referir que as cirurgias Removal of gastric restrictive device e Gastroplasty apenas tinham 2 e 3 intervenções que apesar de não terem sido excluídos do modelo limitam a sua análise, podendo existir diferenças.
+
+## Salvar o gráfico
+
+```{r}
+ggsave(filename = here::here("outputs", "figures", 
+                  paste0( "bmi_lm_gastric", ".pdf")),
+                  plot= p1,
+                  width = 20.49,
+                  height = 10.3,
+                  units = c("cm"),
+                  dpi = "retina")
+```
+
+## Carregar uma imagem com um doente com um CPAP para sensibilização
+
+[![Um doente com CPAP](images/doente_cpap.jfif){fig-align="center"}](https://www.sppneumologia.pt/)
+
+Consequências da hipóxia
+
+-   Dor de cabeça;
+
+-   Sonolência;
+
+-   Aumento dos batimentos cardíacos;
+
+-   Suor frio;
+
+-   Falta de ar;
+
+-   Tontura;
+
+-   Confusão mental;
+
+-   Desmaio;
+
+-   Dedos e boca arroxeados (cianose).
+
+    ## Equação
+
+    O valor normal de PaO2 cai com a idade de acordo com a seguinte equação
+
+    $PaO2 = 103,5 - (0,42 * (idade))$
+
+```{r}
+# 8. O documento docx ou html deve conter pelo menos, titulos, equacoes, listas e imagem p.e. um doente tipo com CPAP
+
+```

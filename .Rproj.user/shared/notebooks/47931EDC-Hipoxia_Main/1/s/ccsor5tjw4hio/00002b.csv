@@ -1,0 +1,10 @@
+"0","hypoxia_2_descrip <- hipoxia_1 %>%"
+"0","  mutate(type_surg = as.factor(type_surg))%>%"
+"0","  mutate(type_surg = case_when("
+"0","    type_surg == 1 ~ ""Gastroenterostomy"","
+"0","    type_surg == 2 ~ ""Gastric restrictive procedure"","
+"0","    type_surg == 3 ~ ""Gastroplasty"","
+"0","    type_surg == 4 ~ ""Removal of gastric restrictive device""))"
+"2","Error in mutate(., type_surg = as.factor(type_surg)) : 
+  object 'hipoxia_1' not found
+"
